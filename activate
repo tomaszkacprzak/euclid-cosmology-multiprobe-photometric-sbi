@@ -1,0 +1,13 @@
+export MAMBA_ROOT_PREFIX=/home2/tomaszk/miniforge3
+export PATH="$MAMBA_ROOT_PREFIX/bin:$PATH"
+eval "$("$MAMBA_ROOT_PREFIX/bin/mamba" shell hook --shell bash)"
+source /home2/tomaszk/miniforge3/bin/activate
+mamba activate /scratch/tomaszk/envs/deeplss
+mamba  info
+
+export BATCH_SYSTEM=slurm
+echo BATCH_SYSTEM=$BATCH_SYSTEM
+export CLUSTER_NAME=calculon-cpu
+echo CLUSTER_NAME=$CLUSTER_NAME
+export CONDA_OVERRIDE_CUDA=13
+echo CONDA_OVERRIDE_CUDA=$CONDA_OVERRIDE_CUDA

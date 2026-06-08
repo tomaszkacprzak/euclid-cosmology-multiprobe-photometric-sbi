@@ -1,0 +1,35 @@
+[workspace]
+authors = ["Tomasz Kacprzak <tomaszk@phys.ethz.ch>"]
+channels = ["conda-forge", "nvidia"]
+name = "000_deeplss_forecast"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[system-requirements]
+cuda = "13"
+
+[dependencies]
+python = ">=3.10"
+cuda-nvcc = "*"
+cuda-nvtx = "*"
+cuda-cudart-dev = "*"
+cuda-libraries-dev = "*"
+cmake = "<4"
+ninja = "*"
+make = "*"
+pkg-config = "*"
+openmpi = "*"
+hdf5 = { version = "*", build = "mpi_openmpi_*" }
+h5py = { version = "*", build = "mpi_openmpi_*" }
+mpi4py = "*"
+fftw = { version = "*", build = "mpi_*" }
+gsl = "*"
+mpi = "*"
+compilers = "*"
+squashfuse = "*"
+fuse-overlayfs = "*"
+tensorflow-gpu = "*"
+uv = "*"
+openjdk = "*"

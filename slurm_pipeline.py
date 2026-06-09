@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os
+import os, glob
 from pathlib import Path
 from simple_slurm import Slurm
 
@@ -8,30 +8,92 @@ from simple_slurm import Slurm
 LAUNCH_DIR = Path(os.getcwd())
 LOG_DIR = LAUNCH_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-CONFIG_FILE = LAUNCH_DIR / "config_euclidtr1v2p0multi.yaml"
-DIR_OUT = LAUNCH_DIR / "euclidtr1v2p0multi"
+CONFIG_FILE = LAUNCH_DIR / "config_euclidRR2v2multi.yaml"
+DIR_OUT = LAUNCH_DIR / "euclidRR2v2multi"
 
-def submit_probemaps_array(
+def get_logs(name):
+
+    return {"output": str(LOG_DIR / f"{name}.%A_%a.out"), "error": str(LOG_DIR / f"{name}.%A_%a.err")}
+
+
+def clear_logs(name):
+
+    log_dict = get_logs(name)
+    logs_stdout = glob.glob(log_dict["output"].replace("%A_%a", "*"))
+    logs_stderr = glob.glob(log_dict["error"].replace("%A_%a", "*"))
+    n_removed = 0
+    for log in logs_stdout + logs_stderr:
+        if os.path.exists(log):
+            os.remove(log)  
+            n_removed += 1
+    print(f'Removed {n_removed} logs')
+
+def submit(slurm, name, command):
+
+    print(f'----------------- Submitting {name}')
+    print(f'Clearing logs {name}')
+    clear_logs(name)
+    print(f'Command: {command}')
+    job_id = slurm.sbatch(command)
+    print(f"Submitted {name} jobid: {job_id}")
+    return job_id
+
+
+########################################################################################
+########################################################################################
+##
+##
+## Jobs submission definitions
+##
+##
+########################################################################################
+########################################################################################
+
+def submit_paramtables(
     *,
     name,
-    array,
     **kwargs,
 ):
-    """
-    Submit one Slurm job array for cosmogridv11.apps.run_probemaps.
-    """
+
     slurm_args = {
-        "job_name": name,
-        "array": array,
+        "cpus_per_task": 1,
+        "mem": "15600M",
+        "time": "1:00:00",
+        "partition": "performance",
+        "clusters": "cluster",
+        "array": [0],
+    }
+    slurm_args.update(kwargs)
+    slurm_args.update(get_logs(name))
+    slurm = Slurm(**slurm_args)
+
+    
+    command = f"""
+    pixi run uv run python -m cosmogridv11.apps.run_paramtables shell_permutations \\
+        --config="{CONFIG_FILE}" \\
+        --dir_out="{DIR_OUT}" \\
+        --verbosity=info
+    """
+        
+    job_id = submit(slurm, name, command)
+    return job_id
+
+
+
+def submit_probemaps(
+    *,
+    name,
+    **kwargs,
+):
+    slurm_args = {
         "cpus_per_task": 8,
         "mem": "15600M",
         "time": "12:00:00",
         "partition": "performance",
         "clusters": "cluster",
-        "output": str(LOG_DIR / f"{name}.%A_%a.out"),
-        "error": str(LOG_DIR / f"{name}.%A_%a.err"),
     }
     slurm_args.update(kwargs)
+    slurm_args.update(get_logs(name))
     slurm = Slurm(**slurm_args)
 
     
@@ -45,17 +107,24 @@ def submit_probemaps_array(
     """
     
     
-
-    print(f'Submitting {name} command: {command}')
-    job_id = slurm.sbatch(command)
-    print(f"Submitted {name} jobid: {job_id}")
+    job_id = submit(slurm, name, command)
     return job_id
 
 
+########################################################################################
+########################################################################################
+##
+##
+## Pipeline
+##
+##
+########################################################################################
+########################################################################################
 
-# pixi run uv run python -m cosmogridv11.apps.run_probemaps main --config=config_euclidtr1v2p0multi.yaml --dir_out=euclidtr1v2p0multi --num_maps_per_index=10 --indices="17" --verbosity=info
-grid_job_id = submit_probemaps_array(name="euclid_proj_grid", array=range(17, 32))
 
-# pixi run uv run python -m cosmogridv11.apps.run_probemaps main --config=config_euclidtr1v2p0multi.yaml --dir_out=euclidtr1v2p0multi --num_maps_per_index=10 --indices="0" --verbosity=info
-fidu_job_id = submit_probemaps_array(name="euclid_proj_fidu", array=range(0, 10), dependency={"afterok": grid_job_id})
+# pixi run uv run python -m cosmogridv11.apps.run_paramtables shell_permutations --config=config_euclidRR2v2multi.yaml   --dir_out=euclidRR2v2multi/ --verbosity=debug
+# permtables_job_id = submit_paramtables(name="permtables")
+
+# pixi run uv run python -m cosmogridv11.apps.run_probemaps main --config=config_euclidRR2v2multi.yaml --dir_out=euclidRR2v2multi --num_maps_per_index=10 --indices="17" --verbosity=info
+job_id = submit_probemaps(name="euclid_proj_test", array=[0]+list(range(17, 32)))
 

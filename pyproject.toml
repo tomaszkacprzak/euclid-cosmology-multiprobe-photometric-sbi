@@ -11,7 +11,8 @@ dev = [
     "jupyterlab",
     "pytest",
     "ruff",
-    "ipykernel"
+    "ipykernel",
+    "pudb"
 ]
 
 

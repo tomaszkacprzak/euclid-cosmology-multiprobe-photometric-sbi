@@ -30,7 +30,7 @@ process euclid_proj_grid {
     script:
     """
     source "${workflow.launchDir}/activate"
-    uv run python -m cosmogridv11.apps.run_probemaps \\
+    pixi run uv run python -m cosmogridv11.apps.run_probemaps \\
         --config=${params.config_file} \\
         --dir_out=${params.dir_out} \\
         --num_maps_per_index=10 \\
@@ -39,6 +39,7 @@ process euclid_proj_grid {
 
     touch done_grid_${task_id}.txt
     """
+    //    uv run python -m cosmogridv11.apps.run_probemaps --config=config_euclidtr1v2p0multi.yaml --dir_out=euclidtr1v2p0multi --num_maps_per_index=10 --tasks=0 --verbosity=info
 }
 
 
@@ -65,7 +66,7 @@ process euclid_proj_fidu {
     script:
     """
     source "${workflow.launchDir}/activate"
-    uv run python -m cosmogridv11.apps.run_probemaps \\
+    pixi run uv run python -m cosmogridv11.apps.run_probemaps \\
         --config=${params.config_file} \\
         --dir_out=${params.dir_out} \\
         --num_maps_per_index=10 \\

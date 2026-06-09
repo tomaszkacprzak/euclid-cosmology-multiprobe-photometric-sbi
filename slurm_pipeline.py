@@ -156,6 +156,12 @@ def submit_grid_postprocessing(
 ########################################################################################
 ########################################################################################
 
+# Generate the pixel file
+# srun uv run jupyter nbconvert --to notebook --execute repos/euclid-multiprobe-simulation-forward-model/notebooks/pixel_file.ipynb --inplace
+
+# Generate the noise file
+# srun uv run jupyter nbconvert --to notebook --execute repos/euclid-multiprobe-simulation-forward-model/notebooks/noise_file.ipynb --inplace
+
 # Make shell permutation tables
 # pixi run uv run python -m cosmogridv11.apps.run_paramtables shell_permutations --config=config_euclidRR2v2multi.yaml   --dir_out=euclidRR2v2multi/ --verbosity=debug
 permtables_job_id = submit_paramtables(name="permtables"

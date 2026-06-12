@@ -26,7 +26,11 @@ def clear_logs(name):
             n_removed += 1
     print(f'Removed {n_removed} logs')
 
-def submit(slurm, name, command):
+def submit(slurm_args, name, command):
+
+    slurm_args["job_name"] = name
+    slurm_args.update(get_logs(name))
+    slurm = Slurm(**slurm_args)
 
     print(f'----------------- Submitting {name}')
     print(f'Clearing logs {name}')
@@ -54,6 +58,7 @@ def submit_paramtables(
     dir_out,
     **kwargs,
 ):
+    if name.startswith("//"):  return None
 
     slurm_args = {
         "cpus_per_task": 1,
@@ -62,11 +67,7 @@ def submit_paramtables(
         "partition": "performance",
         "clusters": "cluster",
         "array": [0],
-    }
-    slurm_args.update(kwargs)
-    slurm_args.update(get_logs(name))
-    slurm = Slurm(**slurm_args)
-
+    } | kwargs
     
     command = f"""
     pixi run uv run python -m cosmogridv11.apps.run_paramtables shell_permutations \\
@@ -75,7 +76,7 @@ def submit_paramtables(
         --verbosity=info
     """
         
-    job_id = submit(slurm, name, command)
+    job_id = submit(slurm_args, name, command)
     return job_id
 
 
@@ -87,17 +88,15 @@ def submit_probemaps(
     dir_out,
     **kwargs,
 ):
+    if name.startswith("//"):  return None
+
     slurm_args = {
         "cpus_per_task": 8,
         "mem": "15600M",
         "time": "12:00:00",
         "partition": "performance",
         "clusters": "cluster",
-    }
-    slurm_args.update(kwargs)
-    slurm_args.update(get_logs(name))
-    slurm = Slurm(**slurm_args)
-
+    } | kwargs
     
     command = f"""
     pixi run uv run python -m cosmogridv11.apps.run_probemaps main \\
@@ -108,8 +107,7 @@ def submit_probemaps(
         --verbosity=info
     """
     
-    
-    job_id = submit(slurm, name, command)
+    job_id = submit(slurm_args, name, command)
     return job_id
 
 def submit_grid_postprocessing(
@@ -118,31 +116,32 @@ def submit_grid_postprocessing(
     config,
     dir_in,
     dir_out,
+    n_files,
     **kwargs,
 ):
+
+    if name.startswith("//"):  return None
+
     slurm_args = {
         "cpus_per_task": 8,
-        "mem": "15600M",
-        "time": "12:00:00",
+        "mem_per_cpu": "1950M",
+        "time": "24:00:00",
         "partition": "performance",
         "clusters": "cluster",
-    }
-    slurm_args.update(kwargs)
-    slurm_args.update(get_logs(name))
-    slurm = Slurm(**slurm_args)
+    } | kwargs
     
     command = f"""
-    pixi run uv run python -m msfm.apps.run_grid_postprocessing
-        --n_files=2500 
-        --config=config_msfm_default.yaml 
-        --dir_in={LAUNCH_DIR / dir_in} 
-        --dir_out={LAUNCH_DIR / dir_out} 
-        --cosmogrid_version="1.1" 
-        --indices="$SLURM_ARRAY_TASK_ID"
-        --verbosity=info
+    pixi run uv run mprof run --interval 0.05 python -m msfm.apps.run_grid_postprocessing \\
+        --n_files={n_files} \\
+        --config="{LAUNCH_DIR / config}" \\
+        --dir_in={LAUNCH_DIR / dir_in} \\
+        --dir_out={LAUNCH_DIR / dir_out} \\
+        --cosmogrid_version="1.1" \\
+        --indices="$SLURM_ARRAY_TASK_ID" \\
+        --verbosity=debug
     """
     
-    job_id = submit(slurm, name, command)
+    job_id = submit(slurm_args|kwargs, name, command)
     return job_id
 
 
@@ -157,28 +156,35 @@ def submit_grid_postprocessing(
 ########################################################################################
 
 # Generate the pixel file
-# srun uv run jupyter nbconvert --to notebook --execute repos/euclid-multiprobe-simulation-forward-model/notebooks/pixel_file.ipynb --inplace
+# srun pixi run uv run jupyter nbconvert --to notebook --execute repos/euclid-multiprobe-simulation-forward-model/notebooks/pixel_file.ipynb --inplace
 
 # Generate the noise file
-# srun uv run jupyter nbconvert --to notebook --execute repos/euclid-multiprobe-simulation-forward-model/notebooks/noise_file.ipynb --inplace
+# srun pixi run uv run jupyter nbconvert --to notebook --execute repos/euclid-multiprobe-simulation-forward-model/notebooks/noise_file.ipynb --inplace
 
 # Make shell permutation tables
 # pixi run uv run python -m cosmogridv11.apps.run_paramtables shell_permutations --config=config_euclidRR2v2multi.yaml   --dir_out=euclidRR2v2multi/ --verbosity=debug
-permtables_job_id = submit_paramtables(name="permtables"
-                                       config="config_cosmogridv11_EuclidDR1F.yaml", 
-                                       dir_out="EuclidDR1F_cosmogridv11")
+submit_paramtables(name="//permtables",
+                   config="config_cosmogridv11_EuclidDR1F.yaml", 
+                   dir_out="EuclidDR1F_cosmogridv11")
 
 # Make projected probe maps
 # pixi run uv run python -m cosmogridv11.apps.run_probemaps main --config=config_EuclidDR1F.yaml --dir_out=EuclidDR1F --num_maps_per_index=10 --indices="17" --verbosity=info
-job_id = submit_probemaps(name="euclid_proj_test", 
-                          config="config_cosmogridv11_EuclidDR1F.yaml", 
-                          dir_out="EuclidDR1F_cosmogridv11", 
-                          array=[0]+list(range(17, 32)))
+submit_probemaps(name="//euclid_proj_test", 
+                 config="config_cosmogridv11_EuclidDR1F.yaml", 
+                 dir_out="EuclidDR1F_cosmogridv11", 
+                 array=[0]+list(range(17, 32)))
+
+submit_probemaps(name="//euclid_proj", 
+                 config="config_cosmogridv11_EuclidDR1F.yaml", 
+                 dir_out="EuclidDR1F_cosmogridv11", 
+                 array=range(32,2521))
+
 
 # Make tfrecords for probe deep learning training
-# pixi run uv run python -m msfm.apps.run_grid_postprocessing --n_files=2500 --config=config_msfm_EuclidDR1F.yaml --dir_in=EuclidDR1F_cosmogridv11/CosmoGrid/bary/ --dir_out=EuclidDR1F_tfrecords/ --cosmogrid_version="1.1" --indices='0'
-job_id = submit_grid_postprocessing(name="euclid_tfrecords", 
-                                    config="config_msfm_EuclidDR1F.yaml", 
-                                    dir_in="EuclidDR1F_cosmogridv11/CosmoGrid/bary/", 
-                                    dir_out="EuclidDR1F_tfrecords", 
-                                    array=[0])
+# srun pixi run uv run mprof run --interval 0.01 python -m msfm.apps.run_grid_postprocessing --n_files=15 --config=config_msfm_EuclidDR1F_test.yaml --dir_in=EuclidDR1F_cosmogridv11/CosmoGrid/bary/ --dir_out=EuclidDR1F_tfrecords_test/ --cosmogrid_version="1.1" --indices='0' --max_sleep=1 --verbosity=debug
+submit_grid_postprocessing(name="euclid_tfrecords_grid_test5", 
+                           config="config_msfm_EuclidDR1F.yaml", 
+                           dir_in="EuclidDR1F_cosmogridv11/CosmoGrid/bary/", 
+                           dir_out="EuclidDR1F_tfrecords5", 
+                           n_files=15,
+                           array=[0])

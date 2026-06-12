@@ -12,7 +12,8 @@ dev = [
     "pytest",
     "ruff",
     "ipykernel",
-    "pudb"
+    "pudb",
+    "memory-profiler"
 ]
 
 

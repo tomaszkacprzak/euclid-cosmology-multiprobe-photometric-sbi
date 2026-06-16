@@ -1,8 +1,10 @@
 [project]
 name = "deeplss-forecast-workspace"
 version = "0.1.0"
-requires-python = ">=3.10"
-dependencies = ["simple-slurm"]
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "simple-slurm", 
+]
 
 
 [dependency-groups]
@@ -26,3 +28,4 @@ members = [
     "repos/FAST-PT",
     "repos/UFalcon",
 ]
+

@@ -92,10 +92,10 @@ def submit_probemaps(
 
     slurm_args = {
         "cpus_per_task": 8,
-        "mem": "15600M",
+        "mem_per_cpu": "1950M",
         "time": "12:00:00",
-        "partition": "performance",
-        "clusters": "cluster",
+        "partition": "cpu-daily",
+        "clusters": "calc-cpu",
     } | kwargs
     
     command = f"""
@@ -110,38 +110,40 @@ def submit_probemaps(
     job_id = submit(slurm_args, name, command)
     return job_id
 
-def submit_grid_postprocessing(
+def submit_postprocessing(
     *,
     name,
     config,
     dir_in,
     dir_out,
     n_files,
+    profile=False,
     **kwargs,
 ):
 
     if name.startswith("//"):  return None
 
     slurm_args = {
-        "cpus_per_task": 8,
+        "cpus_per_task": 6,
         "mem_per_cpu": "1950M",
         "time": "24:00:00",
-        "partition": "performance",
-        "clusters": "cluster",
+        "partition": "cpu-daily",
+        "clusters": "calc-cpu",
     } | kwargs
     
     command = f"""
-    pixi run uv run mprof run --interval 0.05 python -m msfm.apps.run_grid_postprocessing \\
+    pixi run uv run {f"mprof run --interval 0.02 " if profile else ""} python -m msfm.apps.run_onthefly_postprocessing wds \\
         --n_files={n_files} \\
         --config="{LAUNCH_DIR / config}" \\
         --dir_in={LAUNCH_DIR / dir_in} \\
         --dir_out={LAUNCH_DIR / dir_out} \\
         --cosmogrid_version="1.1" \\
         --indices="$SLURM_ARRAY_TASK_ID" \\
-        --verbosity=debug
+        --verbosity={"debug" if profile else "info"} 
+        --max_sleep={1 if profile else 120}
     """
     
-    job_id = submit(slurm_args|kwargs, name, command)
+    job_id = submit(slurm_args, name, command)
     return job_id
 
 
@@ -168,23 +170,31 @@ submit_paramtables(name="//permtables",
                    dir_out="EuclidDR1F_cosmogridv11")
 
 # Make projected probe maps
-# pixi run uv run python -m cosmogridv11.apps.run_probemaps main --config=config_EuclidDR1F.yaml --dir_out=EuclidDR1F --num_maps_per_index=10 --indices="17" --verbosity=info
+# srun pixi run uv run mprof run --interval 0.01 python -m cosmogridv11.apps.run_probemaps main --config=config_cosmogridv11_EuclidDR1F.yaml --dir_out=EuclidDR1F_cosmogridv11 --num_maps_per_index=10 --indices="17" --verbosity=info
 submit_probemaps(name="//euclid_proj_test", 
                  config="config_cosmogridv11_EuclidDR1F.yaml", 
                  dir_out="EuclidDR1F_cosmogridv11", 
                  array=[0]+list(range(17, 32)))
 
-submit_probemaps(name="//euclid_proj", 
+submit_probemaps(name="//proj_part2", 
                  config="config_cosmogridv11_EuclidDR1F.yaml", 
                  dir_out="EuclidDR1F_cosmogridv11", 
-                 array=range(32,2521))
+                 array=range(32,67))
 
 
 # Make tfrecords for probe deep learning training
-# srun pixi run uv run mprof run --interval 0.01 python -m msfm.apps.run_grid_postprocessing --n_files=15 --config=config_msfm_EuclidDR1F_test.yaml --dir_in=EuclidDR1F_cosmogridv11/CosmoGrid/bary/ --dir_out=EuclidDR1F_tfrecords_test/ --cosmogrid_version="1.1" --indices='0' --max_sleep=1 --verbosity=debug
-submit_grid_postprocessing(name="euclid_tfrecords_grid_test5", 
-                           config="config_msfm_EuclidDR1F.yaml", 
-                           dir_in="EuclidDR1F_cosmogridv11/CosmoGrid/bary/", 
-                           dir_out="EuclidDR1F_tfrecords5", 
-                           n_files=15,
-                           array=[0])
+# srun pixi run uv run mprof run --interval 0.01 python -m msfm.apps.run_onthefly_postprocessing postprocess --n_files=15 --config=config_msfm_EuclidDR1F_onthefly_test.yaml --dir_in=../000_deeplss_forecast/EuclidDR1F_cosmogridv11/CosmoGrid/bary/ --dir_out=webdataset_EuclidDR1F_onthefly_test/ --cosmogrid_version="1.1" --indices='0' --max_sleep=1 --verbosity=debug
+submit_postprocessing(name="//webdataset_test", 
+                 config="config_msfm_EuclidDR1F_onthefly.yaml", 
+                 dir_in="/scratch/tomaszk/260205_euclid_multiprobe_sbi/000_deeplss_forecast/EuclidDR1F_cosmogridv11/CosmoGrid/bary/", 
+                 dir_out="webdataset_EuclidDR1F_test", 
+                 n_files=1,
+                 profile=True,
+                 array=[0])
+
+submit_postprocessing(name="webdataset_part1", 
+                 config="config_msfm_EuclidDR1F_onthefly.yaml", 
+                 dir_in="/scratch/tomaszk/260205_euclid_multiprobe_sbi/000_deeplss_forecast/EuclidDR1F_cosmogridv11/CosmoGrid/bary/", 
+                 dir_out="webdataset_EuclidDR1F", 
+                 n_files=51,
+                 array=[0] + list(range(17, 50)))

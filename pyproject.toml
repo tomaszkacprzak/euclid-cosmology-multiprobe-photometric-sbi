@@ -15,17 +15,27 @@ dev = [
     "ruff",
     "ipykernel",
     "pudb",
-    "memory-profiler"
+    "memory-profiler",
+    "tensorboard",
+    "torch_tb_profiler",
 ]
 
 
 [tool.uv.workspace]
 members = [
     "repos/euclid-cosmogridv11",
-    "repos/euclid-deep-lss",
+    "repos/euclid-multiprobe-deeplss-training",
     "repos/euclid-multiprobe-simulation-forward-model",
     "repos/euclid-multiprobe-simulation-inference",
     "repos/FAST-PT",
     "repos/UFalcon",
 ]
 
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu129" }
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true

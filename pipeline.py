@@ -182,10 +182,11 @@ def execute_training(
             --config="{LAUNCH_DIR}/config_deeplss.yaml" \\
             --verbosity=info \\
             train \\
-            --tag={name}
+            --tag={name} \\
             --wandb-mode={"online" if submit else "disabled"} \\
-            --resume-from-checkpoint={LAUNCH_DIR / "results/training_batchsize32_nside512/checkpoint-step-5000.pt"}
     """
+            # --resume-from-checkpoint={LAUNCH_DIR / "results/training_batchsize32_nside512/checkpoint-step-5000.pt"}
+
     command = add_environment_variables(command)
     
     if submit:
@@ -250,5 +251,5 @@ submit_postprocessing(name="//webdataset_part3",
                  array=range(20,50),
                  submit=True)
 
-execute_training(name="training_batchsize32_nside512", 
-                 submit=True)
+execute_training(name="training_test_restart", 
+                 submit=False)

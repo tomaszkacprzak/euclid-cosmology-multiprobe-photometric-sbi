@@ -9,6 +9,14 @@ LAUNCH_DIR = Path(os.getcwd())
 LOG_DIR = LAUNCH_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
+def add_environment_variables(command):
+
+    command = f"""
+    export WANDB_API_KEY=$(cat {os.path.expanduser('~/.secrets/wandb-api-key')}); \\
+    export WANDB_RUN_GROUP="slurm-$SLURM_ARRAY_JOB_ID"; \\
+    """ + command
+    return command
+
 def get_logs(name):
 
     return {"output": str(LOG_DIR / f"{name}.%A_%a.out"), "error": str(LOG_DIR / f"{name}.%A_%a.err")}
@@ -26,7 +34,7 @@ def clear_logs(name):
             n_removed += 1
     print(f'Removed {n_removed} logs')
 
-def submit(slurm_args, name, command):
+def submit_job(slurm_args, name, command):
 
     slurm_args["job_name"] = name
     slurm_args.update(get_logs(name))
@@ -76,7 +84,7 @@ def submit_paramtables(
         --verbosity=info
     """
         
-    job_id = submit(slurm_args, name, command)
+    job_id = submit_job(slurm_args, name, command)
     return job_id
 
 
@@ -107,7 +115,7 @@ def submit_probemaps(
         --verbosity=info
     """
     
-    job_id = submit(slurm_args, name, command)
+    job_id = submit_job(slurm_args, name, command)
     return job_id
 
 def submit_postprocessing(
@@ -116,8 +124,8 @@ def submit_postprocessing(
     config,
     dir_in,
     dir_out,
-    n_files,
     profile=False,
+    submit=False,
     **kwargs,
 ):
 
@@ -126,26 +134,68 @@ def submit_postprocessing(
     slurm_args = {
         "cpus_per_task": 6,
         "mem_per_cpu": "1950M",
-        "time": "24:00:00",
+        "time": "6:00:00",
         "partition": "cpu-daily",
         "clusters": "calc-cpu",
     } | kwargs
     
     command = f"""
     pixi run uv run {f"mprof run --interval 0.02 " if profile else ""} python -m msfm.apps.run_onthefly_postprocessing wds \\
-        --n_files={n_files} \\
         --config="{LAUNCH_DIR / config}" \\
         --dir_in={LAUNCH_DIR / dir_in} \\
         --dir_out={LAUNCH_DIR / dir_out} \\
         --cosmogrid_version="1.1" \\
-        --indices="$SLURM_ARRAY_TASK_ID" \\
-        --verbosity={"debug" if profile else "info"} 
+        --indices={"$SLURM_ARRAY_TASK_ID" if submit else "0"} \\
+        --verbosity={"debug" if profile else "info"} \\
         --max_sleep={1 if profile else 120}
     """
     
-    job_id = submit(slurm_args, name, command)
+    if submit:
+        job_id = submit_job(slurm_args, name, command)
+    else:
+        print(command)
+        os.system(command)
+        job_id = None
     return job_id
 
+
+def execute_training(
+    *,
+    name,
+    submit=False,
+    test=True,
+    **kwargs,
+):
+    if name.startswith("//"):  return None
+
+    slurm_args = {
+        "cpus_per_task": 48,
+        "mem_per_cpu": "3900M",
+        "time": "6:00:00",
+        "partition": "h200",
+        "gpus": 1,
+    } | kwargs
+
+    command = f"""
+    srun --gpu-bind=none  \\
+    pixi run uv run euclid-deeplss-training \\
+            --config="{LAUNCH_DIR}/config_deeplss.yaml" \\
+            --verbosity=info \\
+            train \\
+            --tag={name}
+            --wandb-mode={"online" if submit else "disabled"} \\
+            --resume-from-checkpoint={LAUNCH_DIR / "results/training_batchsize32_nside512/checkpoint-step-5000.pt"}
+    """
+    command = add_environment_variables(command)
+    
+    if submit:
+        job_id = submit_job(slurm_args, name, command)
+    else:
+        print(command)
+        os.system(command)
+        job_id = None
+
+    return job_id
 
 ########################################################################################
 ########################################################################################
@@ -176,25 +226,29 @@ submit_probemaps(name="//euclid_proj_test",
                  dir_out="EuclidDR1F_cosmogridv11", 
                  array=[0]+list(range(17, 32)))
 
-submit_probemaps(name="//proj_part2", 
+submit_probemaps(name="//proj_part4", 
                  config="config_cosmogridv11_EuclidDR1F.yaml", 
-                 dir_out="EuclidDR1F_cosmogridv11", 
-                 array=range(32,67))
+                 dir_out="/scratch/tomaszk/260205_euclid_multiprobe_sbi/000_deeplss_forecast/EuclidDR1F_cosmogridv11/", 
+                 array=range(500,1000))
 
 
 # Make tfrecords for probe deep learning training
-# srun pixi run uv run mprof run --interval 0.01 python -m msfm.apps.run_onthefly_postprocessing postprocess --n_files=15 --config=config_msfm_EuclidDR1F_onthefly_test.yaml --dir_in=../000_deeplss_forecast/EuclidDR1F_cosmogridv11/CosmoGrid/bary/ --dir_out=webdataset_EuclidDR1F_onthefly_test/ --cosmogrid_version="1.1" --indices='0' --max_sleep=1 --verbosity=debug
-submit_postprocessing(name="//webdataset_test", 
+# srun pixi run uv run mprof run --interval 0.01 python -m msfm.apps.run_onthefly_postprocessing wds --n_files=15 --config=config_msfm_EuclidDR1F_onthefly_test.yaml --dir_in=../000_deeplss_forecast/EuclidDR1F_cosmogridv11/CosmoGrid/bary/ --dir_out=webdataset_EuclidDR1F_onthefly_test/ --cosmogrid_version="1.1" --indices='0' --max_sleep=1 --verbosity=debug
+submit_postprocessing(name="//webdataset_test2", 
                  config="config_msfm_EuclidDR1F_onthefly.yaml", 
                  dir_in="/scratch/tomaszk/260205_euclid_multiprobe_sbi/000_deeplss_forecast/EuclidDR1F_cosmogridv11/CosmoGrid/bary/", 
-                 dir_out="webdataset_EuclidDR1F_test", 
-                 n_files=1,
+                 dir_out="webdataset_EuclidDR1F_test2", 
                  profile=True,
+                 submit=False,
                  array=[0])
+# Run training
 
-submit_postprocessing(name="webdataset_part1", 
+submit_postprocessing(name="//webdataset_part3", 
                  config="config_msfm_EuclidDR1F_onthefly.yaml", 
                  dir_in="/scratch/tomaszk/260205_euclid_multiprobe_sbi/000_deeplss_forecast/EuclidDR1F_cosmogridv11/CosmoGrid/bary/", 
                  dir_out="webdataset_EuclidDR1F", 
-                 n_files=51,
-                 array=[0] + list(range(17, 50)))
+                 array=range(20,50),
+                 submit=True)
+
+execute_training(name="training_batchsize32_nside512", 
+                 submit=True)

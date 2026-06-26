@@ -169,23 +169,24 @@ def execute_training(
     if name.startswith("//"):  return None
 
     slurm_args = {
-        "cpus_per_task": 48,
+        "cpus_per_task": 96,
         "mem_per_cpu": "3900M",
-        "time": "6:00:00",
+        "time": "24:00:00",
         "partition": "h200",
         "gpus": 1,
     } | kwargs
 
     command = f"""
-    srun --gpu-bind=none  \\
+    srun  --gpu-bind=none  \\
     pixi run uv run euclid-deeplss-training \\
             --config="{LAUNCH_DIR}/config_deeplss.yaml" \\
-            --verbosity=info \\
+            --verbosity=debug \\
             train \\
             --tag={name} \\
-            --wandb-mode={"online" if submit else "disabled"} \\
+            --wandb-mode={"online" if submit else "online"} \\
+            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-step-20000.pt"}
     """
-            # --resume-from-checkpoint={LAUNCH_DIR / "results/training_batchsize32_nside512/checkpoint-step-5000.pt"}
+        # 
 
     command = add_environment_variables(command)
     
@@ -251,5 +252,5 @@ submit_postprocessing(name="//webdataset_part3",
                  array=range(20,50),
                  submit=True)
 
-execute_training(name="training_test_restart", 
-                 submit=False)
+execute_training(name="training_22M_lr0p00001", 
+                 submit=True)

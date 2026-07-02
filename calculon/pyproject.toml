@@ -39,3 +39,11 @@ torch = { index = "pytorch-cu129" }
 name = "pytorch-cu129"
 url = "https://download.pytorch.org/whl/cu129"
 explicit = true
+
+[tool.uv]
+no-build-isolation-package = ["torch-harmonics", "cuhpx"]
+override-dependencies = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+]

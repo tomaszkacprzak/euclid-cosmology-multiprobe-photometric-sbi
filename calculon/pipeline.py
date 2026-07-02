@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import os, glob
 from pathlib import Path
-os.environ.pop("SQUEUE_FORMAT", None)
 from simple_slurm import Slurm
 
 
@@ -10,7 +9,7 @@ LAUNCH_DIR = Path(os.getcwd())
 LOG_DIR = LAUNCH_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-def array_string(ids, max_running=None):
+def array_string(arr, max_running=None):
 
     array_arg = ",".join(map(str, ids)) 
     if max_running is not None:
@@ -46,6 +45,7 @@ def submit_job(slurm_args, name, command):
 
     slurm_args["job_name"] = name
     slurm_args.update(get_logs(name))
+    
     slurm = Slurm(**slurm_args)
 
     print(f'----------------- Submitting {name}')
@@ -167,6 +167,49 @@ def submit_postprocessing(
     return job_id
 
 
+def execute_training(
+    *,
+    name,
+    submit=False,
+    test=True,
+    array=None,
+    **kwargs,
+):
+    if name.startswith("//"):  return None
+
+    slurm_args = {
+        "cpus_per_task": 96,
+        "mem_per_cpu": "3900M",
+        "time": "24:00:00",
+        "partition": "h200",
+        "gpus": 1,
+    } | kwargs
+
+
+    command = f"""
+    srun  --gpu-bind=none  \\
+    pixi run uv run euclid-deeplss-training \\
+            --config="{LAUNCH_DIR}/config_deeplss.yaml" \\
+            --verbosity=debug \\
+            train \\
+            --tag={name} \\
+            --wandb-mode={"online" if submit else "online"} \\
+            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-step-20000.pt"}
+    """
+        # 
+
+
+    command = add_environment_variables(command)
+    
+    if submit:
+        job_id = submit_job(slurm_args, name, command)
+    else:
+        print(command)
+        os.system(command)
+        job_id = None
+
+    return job_id
+
 
 
 def execute_training_parallel(
@@ -178,29 +221,20 @@ def execute_training_parallel(
     **kwargs,
 ):
     if name.startswith("//"):  return None
-    
+    array = array_string(array, max_running=1) if array is not None else None
+
     slurm_args = {
-        # "cpus_per_task": 96,
-        # "mem_per_cpu": "1950M",
+        "cpus_per_task": 96,
+        "mem_per_cpu": "3900M",
+        "time": "24:00:00",
+        "partition": "h200",
         "nodes": 1,
-        "exclusive": True,
-        "mem_per_cpu": 2900,
-        "cpus_per_task": 288,
-        "time": "0:30:00",
-        "partition": "debug",
-        "gres": "gpu:4",
-        "account": "a0186",
+        "ntasks": 1,
+        "gres": "gpu:2",
     } | kwargs
 
-    array = array_string(array, max_running=1) if array is not None else None
-    if array is not None:
-        slurm_args["array"] = array
-
-    # srun --time=2:0:0 -n1 -c32 --mem-per-cpu=1950 --gpus-per-task=1 -A a0186 --mpi=pmix --network=disable_rdzv_get --environment=./edf.toml --pty bash -c "cd $prev_home; exec bash --rcfile /capstor/scratch/cscs/tomaszk/.bashrc -i"
     command = f"""
-    srun --verbose --environment=./edf.toml --mpi=pmix --network=disable_rdzv_get \\
-            bash -lc 'cd "$SLURM_SUBMIT_DIR" && \\
-            uv run  \\
+    srun --verbose pixi run uv run 
             torchrun --standalone --nnodes=1 --nproc-per-node=2 \\
             -m euclid_multiprobe_deeplss_training.cli \\
             --config="{LAUNCH_DIR}/config_deeplss.yaml" \\
@@ -208,7 +242,7 @@ def execute_training_parallel(
             train \\
             --tag={name} \\
             --wandb-mode={"online" if submit else "online"} \\
-            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-final.pt"}'
+            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-final.pt"}
     """
     # --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-step-20000.pt"}
         
@@ -224,71 +258,6 @@ def execute_training_parallel(
 
     return job_id
 
-
-
-
-def execute_training_multinode(
-    *,
-    name,
-    submit=False,
-    test=True,
-    array=None,
-    **kwargs,
-):
-    if name.startswith("//"):  return None
-    
-    slurm_args = {
-        # "cpus_per_task": 96,
-        # "mem_per_cpu": "1950M",
-        "nodes": 1,
-        "ntasks_per_node": 1,
-        "mem_per_cpu": 2900,
-        "cpus_per_task": 288,
-        "time": "8:0:0",
-        "partition": "normal",
-        "gres": "gpu:4",
-        "account": "a0186",
-    } | kwargs
-
-    array = array_string(array, max_running=1) if array is not None else None
-    if array is not None:
-        slurm_args["array"] = array
-
-    # srun --time=2:0:0 -n1 -c32 --mem-per-cpu=1950 --gpus-per-task=1 -A a0186 --mpi=pmix --network=disable_rdzv_get --environment=./edf.toml --pty bash -c "cd $prev_home; exec bash --rcfile /capstor/scratch/cscs/tomaszk/.bashrc -i"
-    command = (
-    "srun --verbose --environment=./edf.toml --mpi=pmix --network=disable_rdzv_get "
-    "bash -lc "
-    "'"
-    "cd $SLURM_SUBMIT_DIR; "
-    """
-    MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1) \\
-    MASTER_PORT=29500 \\
-    RANK=${SLURM_PROCID} \\
-    LOCAL_RANK=${SLURM_LOCALID} \\
-    WORLD_SIZE=${SLURM_NTASKS}  \\
-    """
-    """
-    uv run torchrun --nnodes=1 --nproc-per-node=4 --rdzv-endpoint=${MASTER_ADDR}:${MASTER_PORT} \\
-    --rdzv-backend=c10d --rdzv-id=${SLURM_JOB_ID} -m euclid_multiprobe_deeplss_training.cli """
-    f"""--config={LAUNCH_DIR}/config_deeplss.yaml \\
-    --verbosity=info \\
-    train \\
-    --tag={name}  \\
-    --wandb-mode={'online' if submit else 'offline'} \\
-    --resume-from-checkpoint={LAUNCH_DIR / 'results' / name / 'checkpoint-final.pt'} 
-    """
-    "'"
-    )
-    command = add_environment_variables(command)
-    
-    if submit:
-        job_id = submit_job(slurm_args, name, command)
-    else:
-        print(command)
-        os.system(command)
-        job_id = None
-
-    return job_id
 
 
 ########################################################################################
@@ -344,6 +313,10 @@ submit_postprocessing(name="//webdataset_part3",
                  array=range(20,50),
                  submit=True)
 
-execute_training_multinode(name="training_ddp_dim256_clariden_gpus1", 
-                        #   array=range(2),
-                          submit=True)
+execute_training(name="//training_dataparallel_test", 
+                 submit=True)
+
+
+execute_training_parallel(name="training_ddp_dim256", 
+                array=range(10),
+                submit=True)

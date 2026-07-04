@@ -1,11 +1,10 @@
 [workspace]
-authors = ["Tomasz Kacprzak <tomaszk@phys.ethz.ch>"]
+authors = ["Tom Ka"]
 channels = ["conda-forge", "nvidia"]
-name = "000_deeplss_forecast"
+name = "deeplss-forecast"
 platforms = ["linux-64"]
 version = "0.1.0"
 
-[tasks]
 
 [system-requirements]
 cuda = "12.9"
@@ -33,4 +32,26 @@ fuse-overlayfs = "*"
 tensorflow-gpu = "*"
 uv = "*"
 pytorch-gpu = "*"
+scikit-build-core = ">=0.10"
 
+
+[tasks]
+
+uv-sync = { cmd = "uv sync --all-packages --all-groups --all-extras", 
+            env = { 
+  CUDA_HOME = "$CONDA_PREFIX",
+  CUDA_ROOT = "$CONDA_PREFIX",
+  CUDA_PATH = "$CONDA_PREFIX",
+  # Modern CMake FindCUDAToolkit prefers this.
+  CUDAToolkit_ROOT = "$CONDA_PREFIX",
+  # Older CMake / legacy setup.py projects may look for these.
+  CUDA_TOOLKIT_ROOT_DIR = "$CONDA_PREFIX",
+  CUDA_INCLUDE_DIRS = "$CONDA_PREFIX/include",
+  CUDA_INC_DIR = "$CONDA_PREFIX/include",
+  # Usually helpful for CMake/pkg-config/library discovery.
+  CMAKE_PREFIX_PATH = "$CONDA_PREFIX:$CMAKE_PREFIX_PATH",
+  LD_LIBRARY_PATH = "$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$LD_LIBRARY_PATH",
+  # Make sure CMake sees Pixi's nvcc.
+  CUDACXX = "$CONDA_PREFIX/bin/nvcc",
+                   } 
+        }

@@ -9,7 +9,7 @@ LAUNCH_DIR = Path(os.getcwd())
 LOG_DIR = LAUNCH_DIR / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-def array_string(arr, max_running=None):
+def array_string(ids, max_running=None):
 
     array_arg = ",".join(map(str, ids)) 
     if max_running is not None:
@@ -173,28 +173,32 @@ def execute_training(
     submit=False,
     test=True,
     array=None,
+    config="config_deeplss.yaml",
     **kwargs,
 ):
     if name.startswith("//"):  return None
 
     slurm_args = {
-        "cpus_per_task": 96,
+        "cpus_per_task": 48,
         "mem_per_cpu": "3900M",
         "time": "24:00:00",
         "partition": "h200",
         "gpus": 1,
     } | kwargs
 
+    array = array_string(array, max_running=1) if array is not None else None
+    if array is not None:
+        slurm_args["array"] = array
 
     command = f"""
-    srun  --gpu-bind=none  \\
+    srun --verbose --gpu-bind=none  \\
     pixi run uv run euclid-deeplss-training \\
-            --config="{LAUNCH_DIR}/config_deeplss.yaml" \\
+            --config="{LAUNCH_DIR}/{config}" \\
             --verbosity=debug \\
             train \\
             --tag={name} \\
             --wandb-mode={"online" if submit else "online"} \\
-            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-step-20000.pt"}
+            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-latest.pt"}
     """
         # 
 
@@ -221,7 +225,6 @@ def execute_training_parallel(
     **kwargs,
 ):
     if name.startswith("//"):  return None
-    array = array_string(array, max_running=1) if array is not None else None
 
     slurm_args = {
         "cpus_per_task": 96,
@@ -232,6 +235,10 @@ def execute_training_parallel(
         "ntasks": 1,
         "gres": "gpu:2",
     } | kwargs
+
+    array = array_string(array, max_running=1) if array is not None else None
+    if array is not None:
+        slurm_args["array"] = array
 
     command = f"""
     srun --verbose pixi run uv run 
@@ -313,10 +320,10 @@ submit_postprocessing(name="//webdataset_part3",
                  array=range(20,50),
                  submit=True)
 
-execute_training(name="//training_dataparallel_test", 
+execute_training(name="training_vimm_test", 
                  submit=True)
 
 
-execute_training_parallel(name="training_ddp_dim256", 
-                array=range(10),
-                submit=True)
+# execute_training_parallel(name="training_ddp_dim256", 
+#                 array=range(10),
+#                 submit=True)

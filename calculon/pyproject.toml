@@ -38,12 +38,13 @@ members = [
     "repos/euclid-multiprobe-simulation-inference",
     "repos/FAST-PT",
     "repos/UFalcon",
-    "repos/cuHPX",
+    "repos/deepsphere-cosmo-pytorch",
 ]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
 cuhpx = { workspace = true }
+deepsphere = { workspace = true }
 torch-harmonics = { index = "torch-harmonics-cu128" }
 
 [[tool.uv.index]]

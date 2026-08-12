@@ -1,0 +1,40 @@
+# Glob pattern for the WebDataset record shards used for training.
+records_pattern: "/capstor/scratch/cscs/tomaszk/260205_euclid_multiprobe_sbi/008_kappa512/webdataset_EuclidDR1F_nside512_finished/EuclidDR1F*.tar"
+config_forward_model: "config_msfm_EuclidDR1F_nside512.yaml"
+physics_model: "onthefly_linkappa"
+physics_model_args:
+  shape_noise_std: 0.001
+
+# Training settings.
+model_name: "nested_transformer"
+embed_dim: 64
+model_args:
+  base_embed_dim: 128
+  growth: "128"
+
+loss_function: "mse"
+num_epochs: 1000
+batch_size: 8
+num_workers: 16
+max_steps: 20000
+learning_rate: 0.00001
+seed: 42  
+device: "cuda"
+
+# Model architecture settings.
+# in_channels: 24
+# num_targets: 10
+# hidden_channels: 64
+# num_blocks: 4
+# dropout: 0.1
+
+# Checkpointing settings.
+validation_every_steps: 1000
+checkpoint_dir: "results"
+checkpoint_every_steps: 10000
+resume_from_checkpoint: null
+
+# Weights & Biases logging settings.
+wandb_project: "euclid-multiprobe-deeplss-training"
+wandb_entity: "euclid-multiprobe-sbi"
+wandb_mode: "online"

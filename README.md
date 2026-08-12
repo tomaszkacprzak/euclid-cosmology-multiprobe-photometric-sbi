@@ -19,6 +19,8 @@ Project 448
 The main submission script is `pipeline.py`, which is meant to be edited freely by the user. It contains different steps of the analysis. Make sure to submit them one at the time, or explicitly chain them in the `pipeline.py`.
 Then submit jobs like this:
 
-`uv run pipeline.py`
+```
+uv run pipeline.py
+```
 
 

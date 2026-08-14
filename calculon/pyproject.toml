@@ -43,7 +43,6 @@ members = [
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu128" }
-cuhpx = { workspace = true }
 deepsphere = { workspace = true }
 torch-harmonics = { index = "torch-harmonics-cu128" }
 

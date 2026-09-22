@@ -29,10 +29,10 @@ mpi = "*"
 compilers = "*"
 squashfuse = "*"
 fuse-overlayfs = "*"
-tensorflow-gpu = "*"
 uv = "*"
 scikit-build-core = ">=0.10"
 ipython = "*"
+
 
 
 [tasks]
@@ -53,9 +53,9 @@ uv-sync = {
     CUDA_INC_DIR = "$CONDA_PREFIX/targets/x86_64-linux/include",
     CUDACXX = "$CONDA_PREFIX/bin/nvcc",
     CMAKE_CUDA_COMPILER = "$CONDA_PREFIX/bin/nvcc",
-    CMAKE_PREFIX_PATH = "$PWD/.venv/lib/python3.10/site-packages/torch;$CONDA_PREFIX/targets/x86_64-linux;$CONDA_PREFIX;$CMAKE_PREFIX_PATH",
-    LD_LIBRARY_PATH = "$PWD/.venv/lib/python3.10/site-packages/torch/lib:$CONDA_PREFIX/targets/x86_64-linux/lib:$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$LD_LIBRARY_PATH",
-    SKBUILD_CMAKE_ARGS = "-DCUDAToolkit_ROOT=$CONDA_PREFIX/targets/x86_64-linux;-DCUDA_TOOLKIT_ROOT_DIR=$CONDA_PREFIX/targets/x86_64-linux;-DCUDA_INCLUDE_DIRS=$CONDA_PREFIX/targets/x86_64-linux/include;-DCUDA_CUDART_LIBRARY=$CONDA_PREFIX/targets/x86_64-linux/lib/libcudart.so;-DCMAKE_CUDA_COMPILER=$CONDA_PREFIX/bin/nvcc;-DTORCH_CUDA_ARCH_LIST=9.0"
+    SKBUILD_CMAKE_ARGS = "-DCUDAToolkit_ROOT=$CONDA_PREFIX/targets/x86_64-linux;-DCUDA_TOOLKIT_ROOT_DIR=$CONDA_PREFIX/targets/x86_64-linux;-DCUDA_INCLUDE_DIRS=$CONDA_PREFIX/targets/x86_64-linux/include;-DCUDA_CUDART_LIBRARY=$CONDA_PREFIX/targets/x86_64-linux/lib/libcudart.so;-DCMAKE_CUDA_COMPILER=$CONDA_PREFIX/bin/nvcc;-DTORCH_CUDA_ARCH_LIST=9.0",
+    CMAKE_PREFIX_PATH = "$CONDA_PREFIX/targets/x86_64-linux;$CONDA_PREFIX;$CMAKE_PREFIX_PATH",
+    LD_LIBRARY_PATH = "$CONDA_PREFIX/targets/x86_64-linux/lib:$CONDA_PREFIX/lib:$CONDA_PREFIX/lib64:$LD_LIBRARY_PATH",
   }
 
 }

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import os, glob
 from pathlib import Path
-os.environ.pop("SQUEUE_FORMAT", None)
 from simple_slurm import Slurm
 
 
@@ -22,7 +21,6 @@ def add_environment_variables(command):
     command = f"""
     export WANDB_API_KEY=$(cat {os.path.expanduser('~/.secrets/wandb-api-key')}); \\
     export WANDB_RUN_GROUP="slurm-$SLURM_ARRAY_JOB_ID"; \\
-    export WANDB_ENTITY="euclid-multiprobe-sbi"; \\
     """ + command
     return command
 
@@ -47,6 +45,7 @@ def submit_job(slurm_args, name, command):
 
     slurm_args["job_name"] = name
     slurm_args.update(get_logs(name))
+    
     slurm = Slurm(**slurm_args)
 
     print(f'----------------- Submitting {name}')
@@ -127,6 +126,47 @@ def run_probemaps(
     job_id = submit_job(slurm_args, name, command)
     return job_id
 
+def run_postprocessing(
+    *,
+    name,
+    config,
+    dir_in,
+    dir_out,
+    profile=False,
+    submit=False,
+    **kwargs,
+):
+
+    if name.startswith("//"):  return None
+
+    slurm_args = {
+        "cpus_per_task": 6,
+        "mem_per_cpu": "1950M",
+        "time": "6:00:00",
+        "partition": "cpu-daily",
+        "clusters": "calc-cpu",
+    } | kwargs
+    
+    command = f"""
+    pixi run uv run {f"mprof run --interval 0.02 " if profile else ""} python -m msfm.apps.run_onthefly_postprocessing wds \\
+        --config="{LAUNCH_DIR / config}" \\
+        --dir_in={LAUNCH_DIR / dir_in} \\
+        --dir_out={LAUNCH_DIR / dir_out} \\
+        --cosmogrid_version="1.1" \\
+        --indices={"$SLURM_ARRAY_TASK_ID" if submit else "0"} \\
+        --verbosity={"debug" if profile else "info"} \\
+        --max_sleep={1 if profile else 120}
+    """
+    
+    if submit:
+        job_id = submit_job(slurm_args, name, command)
+    else:
+        print(command)
+        os.system(command)
+        job_id = None
+    return job_id
+
+
 def run_webdataset(
     *,
     name,
@@ -168,103 +208,7 @@ def run_webdataset(
     return job_id
 
 
-
-def run_training_interactive(
-    *,
-    name,
-    config="config_test.yaml",
-    **kwargs,
-):
-    if name.startswith("//"):  return None
-    
-    
-    command = f"""
-            uv run  \\
-            euclid-deeplss-training \\
-            --config="{LAUNCH_DIR}/{config}" \\
-            --verbosity=info \\
-            train \\
-            --tag={name} \\
-            --wandb-mode=online \\
-            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-latest.pt"}
-            """
-    # --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-step-20000.pt"}
-
-    command = add_environment_variables(command)    
-
-    print(command)
-    os.system(command)
-
-    return None
-
-
-
-
-
-
-
 def run_training(
-    *,
-    name,
-    config,
-    submit=False,
-    test=True,
-    array=None,
-    **kwargs,
-):
-    if name.startswith("//"):  return None
-
-    command =  f"""uv run  euclid-deeplss-training \\
-                --config="{config}" \\
-                --verbosity=info \\
-                train \\
-                --tag={name} \\
-                --wandb-mode={"online" if submit else "online"} \\
-                --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-latest.pt"}"""
-            
-    if submit:
-        
-        slurm_args = {
-            "nodes": 1,
-            "exclusive": False,
-            "mem_per_cpu": 2900,
-            "cpus_per_task": 128,
-            "time": "12:00:00",
-            "partition": "normal",
-            "gres": "gpu:1",
-            "account": "a0158",
-            "ntasks_per_node": 1,
-        } | kwargs
-
-        array = array_string(array, max_running=1) if array is not None else None
-        if array is not None:
-            slurm_args["array"] = array
-
-        # srun --time=2:0:0 -n1 -c32 --mem-per-cpu=1950 --gpus-per-task=1 -A a0158 --mpi=pmix --network=disable_rdzv_get --environment=./edf.toml --pty bash -c "cd $prev_home; exec bash --rcfile /capstor/scratch/cscs/tomaszk/.bashrc -i"
-        command = f"""
-        echo WANDB_ENTITY $WANDB_ENTITY; \\
-        set -euo pipefail; \\
-        srun -K1 --verbose --environment=./edf.toml --mpi=pmix --network=disable_rdzv_get \\
-                bash -lc 'cd "$SLURM_SUBMIT_DIR" && {command}' \\
-
-        """
-
-        command = add_environment_variables(command)
-        job_id = submit_job(slurm_args, name, command)
-    
-    else:
-
-        print(command)
-        os.system(command)
-        job_id = None
-
-    return job_id
-
-
-
-
-
-def run_training_parallel(
     *,
     name,
     submit=False,
@@ -274,43 +218,31 @@ def run_training_parallel(
     **kwargs,
 ):
     if name.startswith("//"):  return None
-    
+
     slurm_args = {
-        # "cpus_per_task": 96,
-        # "mem_per_cpu": "1950M",
-        "nodes": 1,
-        "exclusive": False,
-        "mem_per_cpu": 2900,
-        "cpus_per_task": 128,
-        "time": "12:00:00",
-        "partition": "normal",
-        "gres": "gpu:2",
-        "account": "a0158",
-        "ntasks_per_node": 1,
+        "cpus_per_task": 48,
+        "mem_per_cpu": "3900M",
+        "time": "24:00:00",
+        "partition": "h200",
+        "gpus": 1,
     } | kwargs
 
     array = array_string(array, max_running=1) if array is not None else None
     if array is not None:
         slurm_args["array"] = array
 
-    # srun --time=2:0:0 -n1 -c32 --mem-per-cpu=1950 --gpus-per-task=1 -A a0158 --mpi=pmix --network=disable_rdzv_get --environment=./edf.toml --pty bash -c "cd $prev_home; exec bash --rcfile /capstor/scratch/cscs/tomaszk/.bashrc -i"
     command = f"""
-    echo WANDB_ENTITY $WANDB_ENTITY; \\
-    set -euo pipefail; \\
-    srun -K1 --verbose --environment=./edf.toml --mpi=pmix --network=disable_rdzv_get \\
-            bash -lc 'cd "$SLURM_SUBMIT_DIR" && \\
-            uv run  \\
-            torchrun --standalone --nnodes=1 --nproc-per-node=2 \\
-            -m euclid_multiprobe_deeplss_training.cli \\
-            --config="{config}" \\
+    srun --verbose --gpu-bind=none  \\
+    pixi run uv run euclid-deeplss-training \\
+            --config="{LAUNCH_DIR}/{config}" \\
             --verbosity=info \\
             train \\
             --tag={name} \\
             --wandb-mode={"online" if submit else "online"} \\
-            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-latest.pt"}'
+            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-latest.pt"}
     """
-    # --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-step-20000.pt"}
-        
+        # 
+
 
     command = add_environment_variables(command)
     
@@ -325,56 +257,43 @@ def run_training_parallel(
 
 
 
-
-def run_training_multinode(
+def run_training_parallel(
     *,
     name,
     submit=False,
     test=True,
     array=None,
-    config="config_deeplss.yaml",
-    num_nodes=1,
     **kwargs,
 ):
     if name.startswith("//"):  return None
-    
+
     slurm_args = {
-        # "cpus_per_task": 96,
-        # "mem_per_cpu": "1950M",
-        "nodes": num_nodes,
-        "ntasks_per_node": 1,
-        "mem_per_cpu": 2900,
-        "cpus_per_task": 288,
-        "time": "8:0:0",
-        "partition": "normal",
-        "gres": "gpu:4",
-        "account": "a0158",
+        "cpus_per_task": 96,
+        "mem_per_cpu": "3900M",
+        "time": "24:00:00",
+        "partition": "h200",
+        "nodes": 1,
+        "ntasks": 1,
+        "gres": "gpu:2",
     } | kwargs
 
     array = array_string(array, max_running=1) if array is not None else None
     if array is not None:
         slurm_args["array"] = array
 
-    # do not remove the empty line before uv run
-    command = (
-    f"""
-    srun --verbose --environment=./edf.toml --mpi=pmix --network=disable_rdzv_get bash -lc ' cd $SLURM_SUBMIT_DIR; 
-    export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1);
-    export MASTER_PORT=29500;
-    export RANK=${{SLURM_PROCID}};
-    export LOCAL_RANK=${{SLURM_LOCALID}};
-    export WORLD_SIZE=${{SLURM_NTASKS}};
-    uv run torchrun --nnodes={num_nodes} --nproc-per-node=4 \\
-    --rdzv-endpoint=${{MASTER_ADDR}}:${{MASTER_PORT}} --rdzv-backend=c10d --rdzv-id=${{SLURM_JOB_ID}} \\
-    -m euclid_multiprobe_deeplss_training.cli \\
-    --config={LAUNCH_DIR/config} \\
-    --verbosity=info \\
-    train \\
-    --tag={name}  \\
-    --wandb-mode={'online' if submit else 'offline'} \\
-    --resume-from-checkpoint={LAUNCH_DIR / 'results' / name / 'checkpoint-latest.pt'}' \\
+    command = f"""
+    srun --verbose pixi run uv run 
+            torchrun --standalone --nnodes=1 --nproc-per-node=2 \\
+            -m euclid_multiprobe_deeplss_training.cli \\
+            --config="{LAUNCH_DIR}/config_deeplss.yaml" \\
+            --verbosity=info \\
+            train \\
+            --tag={name} \\
+            --wandb-mode={"online" if submit else "online"} \\
+            --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-final.pt"}
     """
-    )
+    # --resume-from-checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-step-20000.pt"}
+        
 
     command = add_environment_variables(command)
     
@@ -392,6 +311,7 @@ def run_training_multinode(
 def run_predicton_parallel(
     *,
     name,
+    network,
     submit=False,
     test=False,
     array=None,
@@ -406,8 +326,8 @@ def run_predicton_parallel(
                 --config="{config}" \\
                 --verbosity=info \\
                 predict \\
-                --checkpoint={LAUNCH_DIR / "results" / name / "checkpoint-latest.pt"} \\
-                --output-file={LAUNCH_DIR / "results" / name / "preds.h5"} \\
+                --checkpoint={LAUNCH_DIR / "results" / network / "checkpoint-latest.pt"} \\
+                --output-file={LAUNCH_DIR / "results" / network / "preds.h5"} \\
                 --num-examples={'20000' if test else '200000'} \\
                 --batch-size=64 \\
                 --device=cuda \\
@@ -418,12 +338,11 @@ def run_predicton_parallel(
         slurm_args = {
             "nodes": 1,
             "exclusive": False,
-            "mem_per_cpu": 2900,
-            "cpus_per_task": 128,
+            "mem_per_cpu": 3900,
+            "cpus_per_task": 48,
             "time": "12:00:00",
-            "partition": "normal",
-            "gres": "gpu:2",
-            "account": "a0158",
+            "partition": "h200",
+            "gres": "gpu:1",
             "ntasks_per_node": 1,
         } | kwargs
             
@@ -432,10 +351,10 @@ def run_predicton_parallel(
             slurm_args["array"] = array
 
         command = f"""
-        srun -K1 --verbose --environment=./edf.toml --mpi=pmix --network=disable_rdzv_get \\
+        srun --verbose \\
                 bash -lc 'cd "$SLURM_SUBMIT_DIR" && \\
-                uv run  \\
-                torchrun --standalone --nnodes=1 --nproc-per-node=2 {command}
+                pixi run uv run  \\
+                python {command}
                 '
                 """
 
@@ -448,8 +367,8 @@ def run_predicton_parallel(
 
 
         command = f"""
-                    uv run  \\
-                    torchrun --standalone --nnodes=1 --nproc-per-node=1 {command}
+                    pixi run uv run  \\
+                    python {command}
                     """
 
 
@@ -461,7 +380,9 @@ def run_predicton_parallel(
 
     return job_id
 
-def run_likelihood_parallel(
+
+
+def run_likelihood(
     *,
     name,
     config,
@@ -476,12 +397,11 @@ def run_likelihood_parallel(
     slurm_args = {
         "nodes": 1,
         "exclusive": False,
-        "mem_per_cpu": 2900,
-        "cpus_per_task": 128,
+        "mem_per_cpu": 3900,
+        "cpus_per_task": 48,
         "time": "12:00:00",
-        "partition": "normal",
-        "gres": "gpu:2",
-        "account": "a0158",
+        "partition": "h200",
+        "gres": "gpu:1",
         "ntasks_per_node": 1,
     } | kwargs
 
@@ -491,7 +411,6 @@ def run_likelihood_parallel(
                 likelihood \\
                 --input-file={LAUNCH_DIR / "results" / network / "preds.h5"} \\
                 --output-file={LAUNCH_DIR / "results" / name / "likelihood.pt"} \\
-                --num-observations=10 \\
         """
     
     if submit:
@@ -501,9 +420,9 @@ def run_likelihood_parallel(
             slurm_args["array"] = array
 
         command = f"""
-        srun -K1 --verbose --environment=./edf.toml --mpi=pmix --network=disable_rdzv_get \\
+        srun --verbose  \\
                 bash -lc 'cd "$SLURM_SUBMIT_DIR" && \\
-                uv run  \\
+                pixi run uv run  \\
                 python {command} \\
                 '
                 """
@@ -532,6 +451,8 @@ def run_likelihood_parallel(
     return job_id
 
 
+
+
 ########################################################################################
 ########################################################################################
 ##
@@ -541,9 +462,32 @@ def run_likelihood_parallel(
 ##
 ########################################################################################
 ########################################################################################
-                 
 
-# webdataset
+# Generate the pixel file
+# srun pixi run uv run jupyter nbconvert --to notebook --execute repos/euclid-multiprobe-simulation-forward-model/notebooks/pixel_file.ipynb --inplace
+
+# Generate the noise file
+# srun pixi run uv run jupyter nbconvert --to notebook --execute repos/euclid-multiprobe-simulation-forward-model/notebooks/noise_file.ipynb --inplace
+
+# Make shell permutation tables
+# pixi run uv run python -m cosmogridv11.apps.run_paramtables shell_permutations --config=config_euclidRR2v2multi.yaml   --dir_out=euclidRR2v2multi/ --verbosity=debug
+run_paramtables(name="//permtables",
+                   config="config_cosmogridv11_EuclidDR1F.yaml", 
+                   dir_out="EuclidDR1F_cosmogridv11")
+
+# Compute probemaps
+
+run_probemaps(name="//euclid_proj_test", 
+                 config="config_cosmogridv11_EuclidDR1F.yaml", 
+                 dir_out="EuclidDR1F_cosmogridv11", 
+                 array=[0]+list(range(17, 32)))
+
+run_probemaps(name="//proj_part4", 
+                 config="config_cosmogridv11_EuclidDR1F.yaml", 
+                 dir_out="/scratch/tomaszk/260205_euclid_multiprobe_sbi/000_deeplss_forecast/EuclidDR1F_cosmogridv11/", 
+                 array=range(500,1000))
+
+# Compute webdataset
 
 run_webdataset(name="//webdataset_EuclidDR1F_nside512", 
                    config="conf_nside512_EuclidDR1F.yaml,conf_nside512_mse_corrswin.yaml",
@@ -551,30 +495,36 @@ run_webdataset(name="//webdataset_EuclidDR1F_nside512",
                    dir_out="webdataset_EuclidDR1F_nside512",
                    submit=False)
 
-# training 
+# Training
 
-run_training_parallel(name="//corrswin_nside512_mse", 
-                          config="conf_nside512_mse_corrswin.yaml",
-                          array=range(0,10),
-                          submit=True)
+run_training(name="//corrswin_nside512_mse", 
+             config="conf_nside512_mse_corrswin.yaml,conf_nside512_EuclidDR1F.yaml",
+             array=range(10,20),
+             submit=True)
 
-run_training_parallel(name="//mapnvit_nside512_mse", 
-                          config="conf_nside512_mse_mapnvit.yaml",
-                          array=range(0,10),
-                          submit=True)
+run_training(name="//mapnvit_nside512_mse", 
+             config="conf_nside512_mse_mapnvit.yaml,conf_nside512_EuclidDR1F.yaml",
+             array=range(10,20),
+             submit=True)           
 
-# prediction
 
-run_predicton_parallel(name="//corrswin_nside512_mse", 
-                           config="conf_nside512_mse_corrswin.yaml",
-                           test=True,
-                           submit=False)
+run_predicton_parallel(name="//predict_corrswin_nside512_mse", 
+                       network="corrswin_nside512_mse",
+                       config="conf_nside512_mse_corrswin.yaml,conf_nside512_EuclidDR1F.yaml",
+                       submit=True)
 
-run_predicton_parallel(name="//mapnvit_nside512_mse", 
-                           config="conf_nside512_mse_mapnvit.yaml",
-                           submit=False)
+run_predicton_parallel(name="//predict_mapnvit_nside512_mse", 
+                       network="mapnvit_nside512_mse",
+                       config="conf_nside512_mse_mapnvit.yaml,conf_nside512_EuclidDR1F.yaml",
+                       submit=True)
 
-run_likelihood_parallel(name="likelihood_corrswin_nside512_mse", 
-                        network="corrswin_nside512_mse",
-                        config="conf_nside512_mse_corrswin.yaml,config_nside512_EuclidDR1F.yaml",
-                        submit=False)
+
+run_likelihood(name="likelihood_corrswin_nside512_mse", 
+                       network="corrswin_nside512_mse",
+                       config="conf_nside512_mse_corrswin.yaml,conf_nside512_EuclidDR1F.yaml",
+                       submit=True)
+
+run_likelihood(name="//likelihood_mapnvit_nside512_mse", 
+                       network="mapnvit_nside512_mse",
+                       config="conf_nside512_mse_mapnvit.yaml,conf_nside512_EuclidDR1F.yaml",
+                       submit=True)

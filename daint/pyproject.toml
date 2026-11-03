@@ -33,10 +33,9 @@ build = [
 members = [
     "repos/euclid-cosmogridv11",
     "repos/euclid-multiprobe-deeplss-training",
-    "repos/euclid-multiprobe-simulation-forward-model",
-    "repos/euclid-multiprobe-simulation-inference",
     "repos/FAST-PT",
     "repos/UFalcon",
+    "repos/pyracorr",
 ]
 
 
@@ -47,4 +46,7 @@ override-dependencies = [
     "torchvision",
     "torchaudio",
 ]
+
+[tool.uv.sources]
+pyracorr = { workspace = true }
 

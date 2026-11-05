@@ -33,11 +33,15 @@ build = [
 members = [
     "repos/euclid-cosmogridv11",
     "repos/euclid-multiprobe-deeplss-training",
+    "repos/euclid-multiprobe-simulation-forward-model",
+    "repos/euclid-multiprobe-simulation-inference",
     "repos/FAST-PT",
     "repos/UFalcon",
-    "repos/pyracorr",
+    "repos/nestcorr",
 ]
 
+[tool.uv.sources]
+nestcorr = { workspace = true }
 
 [tool.uv]
 no-build-isolation-package = ["torch-harmonics", "cuhpx"]
@@ -46,7 +50,4 @@ override-dependencies = [
     "torchvision",
     "torchaudio",
 ]
-
-[tool.uv.sources]
-pyracorr = { workspace = true }
 
